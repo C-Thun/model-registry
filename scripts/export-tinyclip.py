@@ -31,12 +31,18 @@ def main():
     with torch.no_grad(): reference = encoder(x).numpy()
     result = session.run(None, {'pixel_values': x.numpy()})[0]
     error = float(np.max(np.abs(result - reference)))
-    if result.shape != (1, 512) or not np.isfinite(result).all() or error > 1e-4:
-        raise RuntimeError(f'ONNX CPU 对照失败：{error}')
     with path.open('rb') as stream: digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    probe = dict(tools=actual, max_abs_error=error, output_shape=list(result.shape), model_sha256=digest, finite=bool(np.isfinite(result).all()), validated=False)
+    (args.output / 'probe.json').write_text(json.dumps(probe, indent=2) + '\n')
+    if result.shape != (1, 512) or not probe['finite'] or error > 1e-4:
+        raise RuntimeError(f'ONNX CPU 对照失败：{error}')
     if digest != recipe['model']['sha256'] or path.stat().st_size != recipe['model']['bytes']:
-        raise RuntimeError('导出字节不同于已准入版本，保留暂存结果，不自动注册')
-    (args.output / 'probe.json').write_text(json.dumps(dict(tools=actual, max_abs_error=error, output_shape=list(result.shape), model_sha256=digest), indent=2) + '\n')
+        raise RuntimeError('导出字节不同于已准入版本，保留暂存结果和对照报告，不自动注册')
+    probe['validated'] = True
+    (args.output / 'probe.json').write_text(json.dumps(probe, indent=2) + '\n')
+    # Research parity fixtures stay in the temporary output; only declared artifact files are published.
+    x.numpy().astype('<f4').tofile(args.output / 'parity-input.f32')
+    reference.astype('<f4').tofile(args.output / 'parity-expected.f32')
     print('ONNX CPU 对照通过', file=sys.stderr)
 
 if __name__ == '__main__': main()
