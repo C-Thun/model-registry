@@ -19,7 +19,7 @@ profiles/raybend-photo-tags/v1/
 
 ## 使用
 
-需要 Node.js 22.12+、pnpm，以及提交模型时的 Git LFS。安装后先执行 `git lfs install`；普通 clone 后确认 `git lfs pull` 已下载实际模型，不能把 LFS 指针当 ONNX。
+需要 Node.js 22.12+、pnpm，以及提交模型时的 Git LFS。真正导出还需要 Python 3.12 的 venv/ensurepip、网络和至少 4 GiB 可用空间；导入或复用已有固定模型不需要 Python。脚本先检查这些要求，不会在缺少 LFS/身份等情况下开始制作。安装后先执行 `git lfs install`；普通 clone 后确认 `git lfs pull` 已下载实际模型，不能把 LFS 指针当 ONNX。
 
 ```bash
 pnpm model:init

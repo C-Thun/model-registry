@@ -27,7 +27,16 @@ test('metadata bounds and lock symlinks cannot bypass validation',t=>{
 test('Git race, hook failure recovery and foreign files inside model cannot be committed',t=>{
  const f=fixture(t);const run=args=>String(execFileSync('git',args,{cwd:f.root,encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim();
  run(['init']);run(['config','user.name','Registry test']);run(['config','user.email','fixture@example.invalid']);run(['lfs','install','--local']);run(['add','--','.model-registry.json','.gitignore','.gitattributes']);run(['commit','-m','chore: 初始化测试模型库']);
- const a=f.make(),owned=publicationPaths(f.recipe);const before=gitPreflight(f.root,owned);run(['add','--',...owned]);assert.throws(()=>commitOwned(f.root,owned,before),/index/);run(['reset']);
+ const a=f.make(),owned=publicationPaths(f.recipe);const oldHead=gitPreflight(f.root,owned);run(['commit','--allow-empty','-m','test: 模拟外部 HEAD 改动']);assert.throws(()=>commitOwned(f.root,owned,oldHead),/HEAD/);const before=gitPreflight(f.root,owned);run(['add','--',...owned]);assert.throws(()=>commitOwned(f.root,owned,before),/index/);run(['reset']);
  writeFileSync(join(f.root,'.git/hooks/pre-commit'),'#!/bin/sh\nexit 1\n',{mode:0o755});assert.throws(()=>f.make({commit:true}),/提交失败/);validateArtifact(f.root,a.artifact);rmSync(join(f.root,'.git/hooks/pre-commit'));assert.ok(f.make({commit:true}).commit);
  writeFileSync(join(f.root,a.artifact,'foreign.txt'),'must not add');assert.throws(()=>f.make({commit:true}),/无关/);assert.equal(run(['status','--porcelain']).includes('foreign.txt'),true);
+});
+
+test('an empty unborn Git library initializes and commits only its marker/rules once',t=>{
+ const f=fixture(t),root=join(f.source,'new-git');mkdirSync(root);const run=args=>String(execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim();run(['init']);run(['config','user.name','Registry test']);run(['config','user.email','fixture@example.invalid']);
+ const a=initRegistry(root),head=run(['rev-parse','HEAD']);assert.deepEqual(run(['show','--format=','--name-only','HEAD']).split('\n').sort(),['.gitattributes','.gitignore','.model-registry.json']);assert.equal(initRegistry(root).registryId,a.registryId);assert.equal(run(['rev-parse','HEAD']),head);assert.equal(run(['status','--porcelain']),'');
+});
+
+test('staging links cannot write outside the owned registry',t=>{
+ const f=fixture(t);symlinkSync(f.source,join(f.root,'.staging'));assert.throws(f.make,/链接/);assert.equal(existsSync(join(f.root,'onnx')),false);assert.equal(existsSync(join(f.source,'artifact.json')),false);
 });

@@ -3,7 +3,7 @@ import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,statfsSync} from 'n
 import {dirname,join,resolve} from 'node:path';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {initRegistry,publish,readRegistry,readJson,gitPreflight,validateArtifact,lockRegistry,publicationPaths} from './registry.mjs';
+import {initRegistry,publish,readRegistry,readJson,gitPreflight,validateArtifact,lockRegistry,publicationPaths,inside} from './registry.mjs';
 const toolkit=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export function parseArgs(args){
  const action=args.shift();if(!['init','export'].includes(action))throw new Error('用法：init|export [模型库路径] [--import 目录] [--python 路径] [--profile-dir 目录 --profile-id 标识 --profile-version 版本]');
@@ -30,11 +30,12 @@ export function run(args=process.argv.slice(2)){
  const recipePath=join(toolkit,'recipes/tinyclip-v1/recipe.json'),recipe=readJson(recipePath),root=readRegistry(options.root).root;
  const ap=`onnx/${recipe.id}/${recipe.version}`,pp=options.profileDirectory?`profiles/${options.profileId}/${options.profileVersion??'v1'}`:null;
  gitPreflight(root,publicationPaths(recipe,options.profileDirectory,options.profileId,options.profileVersion)); // environment requirements before downloads or model writes
+ const staging=inside(root,'.staging');
  const unlock=lockRegistry(root);
  let source=options.sourceDirectory?resolve(options.sourceDirectory):null,stage=null,provenance={kind:'verified-import'};
  try{
   if(!source&&existsSync(join(root,ap))){source=validateArtifact(root,ap).directory;provenance={kind:'verified-reuse'};}
-  if(!source){const disk=statfsSync(root,{bigint:true});if(disk.bavail*disk.bsize<4n*1024n**3n)throw new Error('模型导出需要至少 4 GiB 可用空间（权重、暂存与 LFS）；未开始下载');const python=pythonEnvironment(recipe,options.python);mkdirSync(join(root,'.staging'),{recursive:true});stage=mkdtempSync(join(root,'.staging','export-'));console.error('导出固定 TinyCLIP 图像编码器');execFileSync(python,[join(toolkit,'scripts/export-tinyclip.py'),'--recipe',recipePath,'--output',stage],{stdio:['ignore','inherit','inherit']});source=stage;provenance={kind:'cpu-export',...readJson(join(stage,'probe.json'))};}
+  if(!source){const disk=statfsSync(root,{bigint:true});if(disk.bavail*disk.bsize<4n*1024n**3n)throw new Error('模型导出需要至少 4 GiB 可用空间（权重、暂存与 LFS）；未开始下载');const python=pythonEnvironment(recipe,options.python);mkdirSync(staging,{recursive:true});stage=mkdtempSync(join(staging,'export-'));console.error('导出固定 TinyCLIP 图像编码器');execFileSync(python,[join(toolkit,'scripts/export-tinyclip.py'),'--recipe',recipePath,'--output',stage],{stdio:['ignore','inherit','inherit']});source=stage;provenance={kind:'cpu-export',...readJson(join(stage,'probe.json'))};}
   return publish({...options,root,locked:true,sourceDirectory:source,recipe,license:join(toolkit,'recipes/tinyclip-v1/LICENSE.txt'),provenance});
  }catch(error){if(stage){console.error(`未通过准入，导出暂存保留供检查：${stage}`);stage=null;}throw error;}finally{if(stage)rmSync(stage,{recursive:true,force:true});unlock();}
 }

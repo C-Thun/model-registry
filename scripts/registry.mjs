@@ -32,7 +32,7 @@ export function validateArtifact(root,path){
 function git(root,args){const result=String(execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}));return args[0]==='status'?result:result.trim();}
 function gitRoot(root){try{return realpathSync(git(root,['rev-parse','--show-toplevel']));}catch{return null;}}
 export function gitPreflight(root,owned=[]){
- const actual=gitRoot(root);if(!actual)return null;if(actual!==realpathSync(root))throw new Error('模型库必须是 Git 根，不能提交到祖先仓库');
+ const actual=gitRoot(root);if(!actual){if(existsSync(join(root,'.git')))throw new Error('Git 未安装或不能读取模型仓库，请先修复 Git 环境');return null;}if(actual!==realpathSync(root))throw new Error('模型库必须是 Git 根，不能提交到祖先仓库');
  try{git(root,['lfs','version']);}catch{throw new Error('Git LFS 未就绪；请先安装 git-lfs，再运行 git lfs install');}
  try{git(root,['symbolic-ref','--quiet','HEAD']);}catch{throw new Error('模型库处于 detached HEAD，请先切到可写分支');}
  if(!git(root,['config','user.name'])||!git(root,['config','user.email']))throw new Error('请先配置本仓 Git user.name / user.email');
@@ -57,6 +57,7 @@ export function initRegistry(root){
  // Inspect the nearest existing ancestor before creating anything.
  let ancestor=root;while(!existsSync(ancestor))ancestor=dirname(ancestor);
  const actual=gitRoot(ancestor);
+ if(!actual&&existsSync(join(ancestor,'.git')))throw new Error('Git 未安装或不能读取模型仓库，请先修复 Git 环境');
  if(actual&&(!existsSync(root)||actual!==realpathSync(root)))throw new Error('模型库必须是 Git 根，不能接管祖先仓库内的目录');
  const attributes='onnx/**/*.onnx filter=lfs diff=lfs merge=lfs -text\n',ap=join(root,'.gitattributes');
  if(existsSync(ap)&&(lstatSync(ap).isSymbolicLink()||readFileSync(ap,'utf8')!==attributes))throw new Error('已有 attributes 不匹配，拒绝覆盖');
@@ -109,12 +110,12 @@ export function publish({root,sourceDirectory,recipe,license,profileDirectory,pr
  try{
   const target=inside(root,path);
   if(existsSync(target)){if(validateArtifact(root,path).sha256!==sha)throw new Error('同名模型版本内容不同，禁止覆盖');}
-  else{stage=join(root,'.staging',randomUUID());mkdirSync(stage,{recursive:true});copyFileSync(join(sourceDirectory,recipe.model.name),join(stage,recipe.model.name));verifyFile(join(stage,recipe.model.name),recipe.model);copyFileSync(license,join(stage,'LICENSE.txt'));writeFileSync(join(stage,'artifact.json'),raw);writeFileSync(join(stage,'export.json'),json({...provenance,tools:recipe.tools,recipeSha256:digest(json(recipe)),completedAt:new Date().toISOString()}));mkdirSync(dirname(target),{recursive:true});renameSync(stage,target);stage=null;}
+  else{stage=join(inside(root,'.staging'),randomUUID());mkdirSync(stage,{recursive:true});copyFileSync(join(sourceDirectory,recipe.model.name),join(stage,recipe.model.name));verifyFile(join(stage,recipe.model.name),recipe.model);copyFileSync(license,join(stage,'LICENSE.txt'));writeFileSync(join(stage,'artifact.json'),raw);writeFileSync(join(stage,'export.json'),json({...provenance,tools:recipe.tools,recipeSha256:digest(json(recipe)),completedAt:new Date().toISOString()}));mkdirSync(dirname(target),{recursive:true});renameSync(stage,target);stage=null;}
   let profileManifestSha256=null;
   if(pp){
    profileManifestSha256=digest(manifestRaw);const profile={schema:1,artifact:path,artifactSha256:sha,manifestSha256:profileManifestSha256,files:local};const profileRaw=json(profile),dest=inside(root,pp);
    if(existsSync(dest)){if(digest(readFileSync(join(dest,'profile.json')))!==digest(profileRaw)||digest(readFileSync(join(dest,'manifest.json')))!==profileManifestSha256)throw new Error('同名 profile 内容不同，禁止覆盖');for(const f of local)verifyFile(join(dest,f.name),f);}
-   else{stage=join(root,'.staging',randomUUID());mkdirSync(stage,{recursive:true});for(const f of local){copyFileSync(join(profileDirectory,f.name),join(stage,f.name));verifyFile(join(stage,f.name),f);}writeFileSync(join(stage,'manifest.json'),manifestRaw);writeFileSync(join(stage,'profile.json'),profileRaw);mkdirSync(dirname(dest),{recursive:true});renameSync(stage,dest);stage=null;}
+   else{stage=join(inside(root,'.staging'),randomUUID());mkdirSync(stage,{recursive:true});for(const f of local){copyFileSync(join(profileDirectory,f.name),join(stage,f.name));verifyFile(join(stage,f.name),f);}writeFileSync(join(stage,'manifest.json'),manifestRaw);writeFileSync(join(stage,'profile.json'),profileRaw);mkdirSync(dirname(dest),{recursive:true});renameSync(stage,dest);stage=null;}
   }
   const commitHash=commitOwned(root,owned,before);
   return {schema:1,kind:'local-library',registryRoot:root,registryId:readRegistry(root).registryId,artifact:path,artifactSha256:sha,...(pp?{profile:pp,profileManifestSha256}:{}),commit:commitHash};
