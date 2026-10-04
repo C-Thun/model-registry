@@ -1,0 +1,7 @@
+.staging/
+.locks/
+.tools/
+node_modules/
+__pycache__/
+*.pyc
+*.log
