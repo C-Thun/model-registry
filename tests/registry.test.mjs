@@ -4,7 +4,7 @@ import {mkdtempSync,writeFileSync,mkdirSync,readFileSync,rmSync,symlinkSync,exis
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
-import {digest,initRegistry,readRegistry,identifier,inside,publish,validateArtifact,lockRegistry,gitPreflight} from '../scripts/registry.mjs';
+import {digest,initRegistry,readRegistry,identifier,inside,publish,validateArtifact,lockRegistry,gitPreflight,commitOwned,publicationPaths} from '../scripts/registry.mjs';
 import {parseArgs} from '../scripts/cli.mjs';
 function fixture(t){const base=mkdtempSync(join(tmpdir(),'registry-中文 空格-')),root=join(base,'library'),source=join(base,'source'),license=join(base,'LICENSE.txt');t.after(()=>rmSync(base,{recursive:true,force:true}));mkdirSync(source);const bytes=Buffer.from('synthetic encoder'),recipe={id:'tiny',version:'test-r1',source:{modelId:'fixture',revision:'a'.repeat(40)},precision:'fp32',opset:17,contract:{},tools:{},model:{name:'image_encoder.onnx',bytes:bytes.length,sha256:digest(bytes)}};writeFileSync(join(source,'image_encoder.onnx'),bytes);writeFileSync(license,'fixture MIT');initRegistry(root);writeFileSync(join(root,'.gitignore'),'.locks/\n.staging/\n');return {root,source,license,recipe,make:options=>publish({root,sourceDirectory:source,license,recipe,commit:false,...options})};}
 test('immutable version, streaming verification and safe repeat',t=>{const f=fixture(t),a=f.make();assert.equal(a.artifact,'onnx/tiny/test-r1');assert.deepEqual(f.make(),a);assert.equal(validateArtifact(f.root,a.artifact).sha256,a.artifactSha256);writeFileSync(join(f.root,a.artifact,'image_encoder.onnx'),'broken');assert.throws(f.make,/不符/);});
@@ -22,4 +22,12 @@ test('metadata bounds and lock symlinks cannot bypass validation',t=>{
  const f=fixture(t);symlinkSync(f.source,join(f.root,'.locks'));assert.throws(()=>lockRegistry(f.root),/链接/);
  assert.throws(()=>f.make({recipe:{...f.recipe,model:{...f.recipe.model,bytes:2**53}}}),/声明/);
  const a=f.make({locked:true});writeFileSync(join(f.root,a.artifact,'artifact.json'),' '.repeat(65537));assert.throws(()=>validateArtifact(f.root,a.artifact),/大小/);
+});
+
+test('Git race, hook failure recovery and foreign files inside model cannot be committed',t=>{
+ const f=fixture(t);const run=args=>String(execFileSync('git',args,{cwd:f.root,encoding:'utf8',stdio:['ignore','pipe','pipe']})).trim();
+ run(['init']);run(['config','user.name','Registry test']);run(['config','user.email','fixture@example.invalid']);run(['lfs','install','--local']);run(['add','--','.model-registry.json','.gitignore','.gitattributes']);run(['commit','-m','chore: 初始化测试模型库']);
+ const a=f.make(),owned=publicationPaths(f.recipe);const before=gitPreflight(f.root,owned);run(['add','--',...owned]);assert.throws(()=>commitOwned(f.root,owned,before),/index/);run(['reset']);
+ writeFileSync(join(f.root,'.git/hooks/pre-commit'),'#!/bin/sh\nexit 1\n',{mode:0o755});assert.throws(()=>f.make({commit:true}),/提交失败/);validateArtifact(f.root,a.artifact);rmSync(join(f.root,'.git/hooks/pre-commit'));assert.ok(f.make({commit:true}).commit);
+ writeFileSync(join(f.root,a.artifact,'foreign.txt'),'must not add');assert.throws(()=>f.make({commit:true}),/无关/);assert.equal(run(['status','--porcelain']).includes('foreign.txt'),true);
 });

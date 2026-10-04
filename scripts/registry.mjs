@@ -39,7 +39,7 @@ export function gitPreflight(root,owned=[]){
  for(const state of ['MERGE_HEAD','rebase-merge','rebase-apply'])if(existsSync(resolve(root,git(root,['rev-parse','--git-path',state]))))throw new Error('模型库正在 merge/rebase');
  const status=git(root,['status','--porcelain=v1','-z','--untracked-files=all']);
  // With -z, paths are literal (no quoting); rename has a second path and is always rejected.
- for(const record of status.split('\0').filter(Boolean)){const path=record.slice(3);if(record[0]==='R'||record[1]==='R'||!owned.some(p=>path===p||path.startsWith(p+'/')))throw new Error(`模型库有无关改动，拒绝自动提交：${path}`);}
+ for(const record of status.split('\0').filter(Boolean)){const path=record.slice(3);if(record[0]==='R'||record[1]==='R'||!owned.includes(path))throw new Error(`模型库有无关改动，拒绝自动提交：${path}`);}
  let head=null;try{head=git(root,['rev-parse','HEAD']);}catch{}
  const index=resolve(root,git(root,['rev-parse','--git-path','index']));return {head,indexHash:existsSync(index)?digest(readFileSync(index)):null,index};
 }
@@ -78,9 +78,20 @@ export function lockRegistry(root){
  return()=>rmSync(path);
 }
 function declaration(path,name){const b=readFileSync(path);return {name,bytes:b.length,sha256:digest(b)};}
+export function publicationPaths(recipe,profileDirectory,profileId,profileVersion='v1'){
+ const path=`onnx/${identifier(recipe.id)}/${identifier(recipe.version)}`;
+ const owned=[recipe.model.name,'LICENSE.txt','artifact.json','export.json'].map(n=>`${path}/${n}`);
+ if(profileDirectory){const pp=`profiles/${identifier(profileId)}/${identifier(profileVersion)}`,manifest=readJson(join(profileDirectory,'manifest.json'));
+  if(!Array.isArray(manifest.files)||manifest.files.length>64)throw new Error('profile 文件清单无效');
+  for(const f of manifest.files)if(typeof f.name!=='string'||!/^[A-Za-z0-9_.-]+$/.test(f.name)||['.','..','manifest.json','profile.json'].includes(f.name))throw new Error('profile 文件声明无效');
+  owned.push(...['manifest.json','profile.json',...manifest.files.filter(f=>f.name!==recipe.model.name).map(f=>f.name)].map(n=>`${pp}/${n}`));
+ }
+ return owned;
+}
 export function publish({root,sourceDirectory,recipe,license,profileDirectory,profileId,profileVersion='v1',commit=true,locked=false,provenance={kind:'verified-import'}}){
  root=readRegistry(root).root;identifier(recipe.id);identifier(recipe.version);
- const path=`onnx/${recipe.id}/${recipe.version}`,pp=profileDirectory?`profiles/${identifier(profileId)}/${identifier(profileVersion)}`:null,owned=[path,...(pp?[pp]:[])];
+ const path=`onnx/${recipe.id}/${recipe.version}`,pp=profileDirectory?`profiles/${identifier(profileId)}/${identifier(profileVersion)}`:null;
+ const owned=publicationPaths(recipe,profileDirectory,profileId,profileVersion);
  const before=commit?gitPreflight(root,owned):null;
  if(before){const attrs=git(root,['check-attr','filter','--',`${path}/${recipe.model.name}`]);if(!attrs.endsWith(': lfs'))throw new Error('ONNX 未由 Git LFS 跟踪，请先初始化本库');}
  verifyFile(join(sourceDirectory,recipe.model.name),recipe.model);

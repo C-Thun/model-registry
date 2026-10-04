@@ -3,7 +3,7 @@ import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,statfsSync} from 'n
 import {dirname,join,resolve} from 'node:path';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
-import {initRegistry,publish,readRegistry,readJson,gitPreflight,validateArtifact,lockRegistry} from './registry.mjs';
+import {initRegistry,publish,readRegistry,readJson,gitPreflight,validateArtifact,lockRegistry,publicationPaths} from './registry.mjs';
 const toolkit=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 export function parseArgs(args){
  const action=args.shift();if(!['init','export'].includes(action))throw new Error('用法：init|export [模型库路径] [--import 目录] [--python 路径] [--profile-dir 目录 --profile-id 标识 --profile-version 版本]');
@@ -29,7 +29,7 @@ export function run(args=process.argv.slice(2)){
  if(options.action==='init'){const info=initRegistry(options.root);return {schema:1,registryRoot:info.root,registryId:info.registryId};}
  const recipePath=join(toolkit,'recipes/tinyclip-v1/recipe.json'),recipe=readJson(recipePath),root=readRegistry(options.root).root;
  const ap=`onnx/${recipe.id}/${recipe.version}`,pp=options.profileDirectory?`profiles/${options.profileId}/${options.profileVersion??'v1'}`:null;
- gitPreflight(root,[ap,...(pp?[pp]:[])]); // environment requirements before downloads or model writes
+ gitPreflight(root,publicationPaths(recipe,options.profileDirectory,options.profileId,options.profileVersion)); // environment requirements before downloads or model writes
  const unlock=lockRegistry(root);
  let source=options.sourceDirectory?resolve(options.sourceDirectory):null,stage=null,provenance={kind:'verified-import'};
  try{
