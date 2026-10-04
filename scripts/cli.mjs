@@ -21,8 +21,8 @@ function pythonEnvironment(recipe,provided){
  const base=process.platform==='win32'?'python':'python3';
  try{const version=String(execFileSync(base,['-c','import sys,venv,ensurepip; print(f"{sys.version_info.major}.{sys.version_info.minor}")'],{encoding:'utf8'})).trim();if(version!==recipe.tools.python)throw new Error('version');}catch{throw new Error(`制作端需要 Python ${recipe.tools.python} 及 venv/ensurepip；请先安装（Ubuntu: python3-venv），未开始模型写入`);}
  console.error('准备隔离 CPU 导出环境（固定版本，首次可能较慢）');
- execFileSync(base,['-m','venv',environment],{stdio:'inherit'});
- execFileSync(python,['-m','pip','install','--extra-index-url','https://download.pytorch.org/whl/cpu','-r',join(toolkit,'recipes/tinyclip-v1/requirements-export.txt')],{stdio:['ignore','inherit','inherit']});return verify(python);
+ execFileSync(base,['-m','venv',environment],{stdio:['ignore',2,2]});
+ execFileSync(python,['-m','pip','install','--index-url','https://pypi.org/simple','--extra-index-url','https://download.pytorch.org/whl/cpu','-r',join(toolkit,'recipes/tinyclip-v1/requirements-export.txt')],{stdio:['ignore',2,2]});return verify(python);
 }
 export function run(args=process.argv.slice(2)){
  preflight();const options=parseArgs([...args]);
@@ -35,7 +35,7 @@ export function run(args=process.argv.slice(2)){
  let source=options.sourceDirectory?resolve(options.sourceDirectory):null,stage=null,provenance={kind:'verified-import'};
  try{
   if(!source&&existsSync(join(root,ap))){source=validateArtifact(root,ap).directory;provenance={kind:'verified-reuse'};}
-  if(!source){const disk=statfsSync(root,{bigint:true});if(disk.bavail*disk.bsize<4n*1024n**3n)throw new Error('模型导出需要至少 4 GiB 可用空间（权重、暂存与 LFS）；未开始下载');const python=pythonEnvironment(recipe,options.python);mkdirSync(staging,{recursive:true});stage=mkdtempSync(join(staging,'export-'));console.error('导出固定 TinyCLIP 图像编码器');execFileSync(python,[join(toolkit,'scripts/export-tinyclip.py'),'--recipe',recipePath,'--output',stage],{stdio:['ignore','inherit','inherit']});source=stage;provenance={kind:'cpu-export',...readJson(join(stage,'probe.json'))};}
+  if(!source){const disk=statfsSync(root,{bigint:true});if(disk.bavail*disk.bsize<4n*1024n**3n)throw new Error('模型导出需要至少 4 GiB 可用空间（权重、暂存与 LFS）；未开始下载');const python=pythonEnvironment(recipe,options.python);mkdirSync(staging,{recursive:true});stage=mkdtempSync(join(staging,'export-'));console.error('导出固定 TinyCLIP 图像编码器');execFileSync(python,[join(toolkit,'scripts/export-tinyclip.py'),'--recipe',recipePath,'--output',stage],{stdio:['ignore',2,2]});source=stage;provenance={kind:'cpu-export',...readJson(join(stage,'probe.json'))};}
   return publish({...options,root,locked:true,sourceDirectory:source,recipe,license:join(toolkit,'recipes/tinyclip-v1/LICENSE.txt'),provenance});
  }catch(error){if(stage){console.error(`未通过准入，导出暂存保留供检查：${stage}`);stage=null;}throw error;}finally{if(stage)rmSync(stage,{recursive:true,force:true});unlock();}
 }
