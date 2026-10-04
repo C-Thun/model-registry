@@ -1,0 +1,13 @@
+{
+  "kind": "verified-import",
+  "tools": {
+    "python": "3.12",
+    "torch": "2.14.1+cpu",
+    "transformers": "4.57.6",
+    "onnx": "1.23.1",
+    "onnxruntime": "1.28.0",
+    "numpy": "2.5.2"
+  },
+  "recipeSha256": "0d871579574e2078d20a2a933bd2d3287377d1659c0a30c2ca8c9e59ee4bb6e3",
+  "completedAt": "2026-10-04T09:19:38.422Z"
+}

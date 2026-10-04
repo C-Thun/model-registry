@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "artifact": "onnx/wkcn-tinyclip-vit-40m-32/hf95ec8197-op17-fp32-r1",
+  "artifactSha256": "5bfe9c1ad365325e0a71e5737e3cd4b0b5e0a40a8f5550a75db03fc9bfc978c3",
+  "manifestSha256": "775a029ab0956f88acbd40dcb10e5fbbc174e3bb624c656b23923979684bbfc7",
+  "files": [
+    {
+      "name": "classes.json",
+      "bytes": 141513,
+      "sha256": "5e57b4761296991b94a8255ef34709bfc0d6aa23ee134d21aca8179514411e35"
+    },
+    {
+      "name": "LICENSE.txt",
+      "bytes": 1726,
+      "sha256": "ed28672d56eeeeb5d03144494f9022322f643f80b826e88ddcb7b50d6ec2d9f8"
+    }
+  ]
+}
